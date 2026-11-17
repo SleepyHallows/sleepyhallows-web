@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herald &mdash; Sleepy Hallows</title>
+<meta name="description" content="The Sleepy Hallows Herald: realm standings and character search for our Dark Age of Camelot freeshard in Unreal Engine. Opens when the realms go live.">
+<link rel="canonical" href="https://sleepyhallows.com/herald/">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav gut">
+  <a class="brand" href="/">Sleepy&nbsp;Hallows</a>
+  <nav>
+    <a href="/">Realms</a>
+    <a class="on" href="/herald/">Herald</a>
+    <a href="/chronicle/">Chronicle</a>
+    <a href="/enter/">Enter</a>
+    <a class="discord" href="https://discord.gg/sleepyhallows">Discord</a>
+  </nav>
+</header>
+
+<div class="page-head gut">
+  <h1>The Herald</h1>
+  <p>Realm standings and the roll of champions</p>
+</div>
+
+<main class="wrap gut" style="padding-bottom:40px">
+  <div id="content">
+    <div class="scroll" style="margin-top:32px">The Herald opens when the realms go live. Standings will be recorded here
+      once the shard is running.</div>
+  </div>
+
+  <div id="live" hidden>
+    <div class="section-h"><h2>Realm population</h2></div>
+    <div class="pop-bars" id="pop-bars"></div>
+
+    <div class="section-h"><h2>Search the roll</h2></div>
+    <div class="search"><input id="q" type="search" placeholder="Character name&hellip;" autocomplete="off"></div>
+    <div id="search-results"></div>
+
+    <div class="section-h"><h2>Champions &mdash; by realm points</h2></div>
+    <div id="leaderboard"></div>
+  </div>
+</main>
+
+<footer class="foot gut">Sleepy Hallows &middot; The Herald</footer>
+
+<script type="module" src="/app.js"></script>
+<script type="module">
+const SUPABASE_URL = "https://cltsqinfyjdxlfdxhuts.supabase.co";
+const SUPABASE_KEY = "sb_publishable_mDRR86y-GXMsXDm64TvKaw_7OxXytaN";
+const REALM = { 1: "Albion", 2: "Midgard", 3: "Hibernia" };
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;" }[c]));
+async function rest(path) {
+  const r = await fetch(SUPABASE_URL + "/rest/v1/" + path, { headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY } });
+  if (!r.ok) throw new Error("http " + r.status); return r.json();
+}
+function table(list) {
+  const tr = list.map((c, i) => `<tr>
+    <td class="rank">${i + 1}</td><td>${esc(c.name)}</td>
+    <td class="r${c.realm}">${REALM[c.realm] || "?"}</td><td>${esc(c.class_name || "")}</td>
+    <td>${c.level ?? ""}</td><td>${(c.realm_points ?? 0).toLocaleString()}</td>
+    <td class="muted">${esc(c.guild_name || "")}</td></tr>`).join("");
+  return `<div class="tablewrap"><table><thead><tr><th>#</th><th>Name</th><th>Realm</th><th>Class</th><th>Lvl</th><th>Realm&nbsp;Pts</th><th>Guild</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+}
+const bar = (cls, name, n) => `<div class="pb ${cls}"><div class="n">${n}</div><div class="l">${name}</div></div>`;
+
+async function init() {
+  // only reveal the live Herald if there are real characters; otherwise keep the honest "opens when live" notice
+  let board = [];
+  try { board = await rest("leaderboard?select=name,realm,class_name,level,realm_points,guild_name&order=realm_points.desc&limit=50"); }
+  catch { return; }
+  if (!board.length) return;
+
+  document.getElementById("content").hidden = true;
+  document.getElementById("live").hidden = false;
+  document.getElementById("leaderboard").innerHTML = table(board);
+
+  try {
+    const pop = await rest("realm_population?select=realm,characters");
+    const by = { 1: 0, 2: 0, 3: 0 }; for (const r of pop) by[r.realm] = r.characters;
+    document.getElementById("pop-bars").innerHTML = bar("alb","Albion",by[1]) + bar("mid","Midgard",by[2]) + bar("hib","Hibernia",by[3]);
+  } catch {}
+
+  let t;
+  document.getElementById("q").addEventListener("input", (e) => {
+    clearTimeout(t); const q = e.target.value.trim(); const out = document.getElementById("search-results");
+    if (q.length < 2) { out.innerHTML = ""; return; }
+    t = setTimeout(async () => {
+      try {
+        const list = await rest(`leaderboard?select=name,realm,class_name,level,realm_points,guild_name&name=ilike.*${encodeURIComponent(q)}*&order=realm_points.desc&limit=20`);
+        out.innerHTML = list.length ? table(list) : '<div class="scroll">No champion by that name.</div>';
+      } catch { out.innerHTML = ""; }
+    }, 250);
+  });
+}
+init();
+</script>
+</body>
+</html>
